@@ -204,8 +204,10 @@ services:
     build: .
     container_name: harness_app
     env_file: .env  # DATABASE_URL from .env
+    environment:
+      API_PORT: ${API_PORT:-8080}
     ports:
-      - "${API_PORT:-8080}:8080"
+      - "${API_PORT:-8080}:${API_PORT:-8080}"
     volumes:
       - ${WORKSPACE_PATH:-./workspaces}:/workspaces
     restart: unless-stopped
@@ -220,10 +222,11 @@ services:
     container_name: harness_app
     env_file: .env
     environment:
-      # Override DATABASE_URL to use Docker service name
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5433/coding_agent_harness_db
+      # Override DATABASE_URL to use Docker service name (all values configurable)
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:${POSTGRES_PORT:-5433}/${POSTGRES_DB:-coding_agent_harness_db}
+      API_PORT: ${API_PORT:-8080}
     ports:
-      - "${API_PORT:-8080}:8080"
+      - "${API_PORT:-8080}:${API_PORT:-8080}"
     volumes:
       - ${WORKSPACE_PATH:-./workspaces}:/workspaces
     restart: unless-stopped
@@ -236,17 +239,17 @@ services:
     image: postgres:18-alpine
     container_name: harness_db
     environment:
-      POSTGRES_DB: coding_agent_harness_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      PGPORT: "5433"
+      POSTGRES_DB: ${POSTGRES_DB:-coding_agent_harness_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      PGPORT: "${POSTGRES_PORT:-5433}"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/migrations:/docker-entrypoint-initdb.d
     ports:
-      - "${POSTGRES_PORT:-5433}:5433"
+      - "${POSTGRES_PORT:-5433}:${POSTGRES_PORT:-5433}"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -p 5433"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-coding_agent_harness_db} -p ${POSTGRES_PORT:-5433}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -260,9 +263,9 @@ services:
     image: postgres:18-alpine
     container_name: harness_db_dev
     environment:
-      POSTGRES_DB: coding_agent_harness_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-coding_agent_harness_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     volumes:
       - postgres_dev_data:/var/lib/postgresql/data
     ports:
@@ -299,14 +302,26 @@ docker-compose --profile dev-db up postgres-dev
 ```bash
 # Required
 CLAUDE_CODE_OAUTH_TOKEN=your-token
-LINEAR_API_KEY=lin_api_xxx
 
 # For external-db profile
-DATABASE_URL=postgresql://user:pass@your-host:5432/coding_agent_harness_db
+DATABASE_URL=postgresql://user:pass@your-host:5432/coding_agent_harness
 
-# Optional
+# Optional - Linear backend
+LINEAR_API_KEY=lin_api_xxx
+
+# Optional - Docker configuration
 API_PORT=8080
 WORKSPACE_PATH=./workspaces
+
+# Optional - Bundled PostgreSQL configuration
+POSTGRES_DB=coding_agent_harness_db
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_PORT=5433
+
+# Optional - Agent configuration
+AGENT_MODEL=claude-opus-4-5-20251101
+MAX_SESSIONS=1000
 ```
 
 ---
@@ -719,9 +734,17 @@ Available commands:
   /status [id]      Show project status (current if no id)
   /resume <id>      Resume a paused project
   /stop             Stop current project gracefully
+  /new              Start a new project (abandons current)
+  /quit or /exit    Exit the application
   /help             Show this help
 
-Or just type what you want to build to start a new project.
+Keyboard Shortcuts:
+  ESC         - Interrupt current operation and return to prompt
+  CTRL+C      - Same as ESC (interrupt, not exit)
+  Enter       - Continue current project (after interrupt)
+
+Type what you want to build to start a new project.
+After interrupting, press Enter to continue or /new to start fresh.
 ```
 
 ### Mode 2: Docker (REST API Only)
@@ -979,15 +1002,31 @@ docker-compose logs -f
 
 ---
 
+## Keyboard Controls
+
+| Key | Action |
+|-----|--------|
+| **ESC** | Interrupt current operation, return to prompt |
+| **CTRL+C** | Same as ESC (interrupt, not exit) |
+| **Enter** | Continue current project (after interrupt) |
+| **/new** | Start a new project (abandons current) |
+| **/quit** or **/exit** | Exit the application |
+| **/stop** | Stop current project gracefully |
+| **/help** | Show available commands |
+
+---
+
 ## Critical Files Reference
 
 | File | Path | Purpose |
 |------|------|---------|
 | Entry point | `autonomous_agent_demo.py` | Current entry (keep for backwards compat) |
+| Orchestrator entry | `main.py` | Multi-phase orchestrator entry point |
 | Session loop | `agent.py` | `run_agent_session()` to wrap in phases |
 | Client creation | `client.py` | `create_client()` to extend |
 | Security | `security.py` | Do not modify |
 | Progress | `progress.py` | Extend for multi-backend |
+| Keyboard handler | `orchestrator/keyboard_handler.py` | ESC/CTRL+C interrupt handling |
 | Init prompt | `prompts/initializer_prompt.md` | Template for Phase 4 |
 | Coding prompt | `prompts/coding_prompt.md` | Template for Phase 5 |
 

@@ -130,14 +130,19 @@ python test_security.py
 
 Copy `.env.example` to `.env` and configure:
 
-| Variable | Purpose | Required For                       |
-|----------|---------|------------------------------------|
-| `CLAUDE_CODE_OAUTH_TOKEN` | Claude Code auth (`claude setup-token`) | All modes                          |
-| `LINEAR_API_KEY` | Linear API access | Demo mode, Linear backend          |
-| `DATABASE_URL` | PostgreSQL connection string | Orchestrator with postgres backend |
-| `API_PORT` | Port for API server | Docker API mode (default: 8080)    |
-| `POSTGRES_PORT` | PostgreSQL port | Docker with-db profile (default: 5433) |
-| `WORKSPACE_PATH` | Workspace directory | Docker (default: ./workspaces)     |
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `CLAUDE_CODE_OAUTH_TOKEN` | Claude Code auth (`claude setup-token`) | Required |
+| `LINEAR_API_KEY` | Linear API access | Optional (Demo mode, Linear backend) |
+| `DATABASE_URL` | PostgreSQL connection string | Optional (Orchestrator with postgres backend) |
+| `WORKSPACE_PATH` | Workspace directory for projects | `./workspaces` |
+| `API_PORT` | Port for API server | `8080` |
+| `POSTGRES_DB` | Database name (bundled PostgreSQL) | `coding_agent_harness_db` |
+| `POSTGRES_USER` | Database user (bundled PostgreSQL) | `postgres` |
+| `POSTGRES_PASSWORD` | Database password (bundled PostgreSQL) | `postgres` |
+| `POSTGRES_PORT` | PostgreSQL port (bundled PostgreSQL) | `5433` |
+| `AGENT_MODEL` | Claude model to use | `claude-opus-4-5-20251101` |
+| `MAX_SESSIONS` | Maximum agent sessions | `1000` |
 
 ## Architecture
 
@@ -361,6 +366,18 @@ Edit `prompts/initializer_prompt.md` and change "50 issues" to your desired coun
 ### Modifying Allowed Commands
 
 Edit `security.py` to add or remove commands from `ALLOWED_COMMANDS`.
+
+## Keyboard Controls
+
+| Key | Action |
+|-----|--------|
+| **ESC** | Interrupt current operation, return to prompt |
+| **CTRL+C** | Same as ESC (interrupt, not exit) |
+| **Enter** | Continue current project (after interrupt) |
+| **/new** | Start a new project (abandons current) |
+| **/quit** or **/exit** | Exit the application |
+| **/stop** | Stop current project gracefully |
+| **/help** | Show available commands |
 
 ## Troubleshooting
 

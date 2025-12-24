@@ -47,14 +47,15 @@ RUN mkdir -p /workspaces
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    WORKSPACE_PATH=/workspaces
+    WORKSPACE_PATH=/workspaces \
+    API_PORT=8080
 
-# Expose API port
-EXPOSE 8080
+# Expose API port (note: actual port is set via API_PORT env var)
+EXPOSE ${API_PORT}
 
-# Health check
+# Health check (uses API_PORT env var)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+    CMD curl -f http://localhost:${API_PORT:-8080}/health || exit 1
 
-# Default command - API server mode
-CMD ["python", "main.py", "--api", "--host", "0.0.0.0", "--port", "8080"]
+# Default command - API server mode (reads API_PORT from environment)
+CMD ["sh", "-c", "python main.py --api --host 0.0.0.0 --port ${API_PORT:-8080}"]

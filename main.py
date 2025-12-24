@@ -27,11 +27,14 @@ Usage:
 import argparse
 import asyncio
 import os
+import signal
 import sys
 from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
+
+from orchestrator.keyboard_handler import get_keyboard_handler, request_interrupt
 
 
 def parse_args() -> argparse.Namespace:
@@ -142,6 +145,10 @@ async def run_cli_mode(args: argparse.Namespace) -> int:
     from orchestrator.shutdown import create_shutdown_handler
     from orchestrator.heartbeat import create_heartbeat_manager
 
+    # Start keyboard handler for ESC key detection
+    keyboard_handler = get_keyboard_handler()
+    keyboard_handler.start()
+
     # Load config
     config = None
     if args.config.exists():
@@ -150,15 +157,17 @@ async def run_cli_mode(args: argparse.Namespace) -> int:
         except Exception as e:
             print(f"Warning: Could not load config: {e}")
 
-    # Determine project directory
+    # Determine workspace directory (where projects are created)
     if args.project_dir:
-        project_dir = args.project_dir
-    elif config:
-        project_dir = config.project.directory
+        workspace_dir = args.project_dir
+    elif config and config.project.directory:
+        workspace_dir = config.project.directory
     else:
-        project_dir = Path("./my_project")
+        # Read from WORKSPACE_PATH env var, default to ./workspaces
+        workspace_dir = Path(os.environ.get("WORKSPACE_PATH", "./workspaces"))
 
-    project_dir = project_dir.resolve()
+    workspace_dir = workspace_dir.resolve()
+    workspace_dir.mkdir(parents=True, exist_ok=True)  # Ensure workspace exists
 
     # Create CLI adapter
     adapter = create_cli_adapter()
@@ -166,67 +175,146 @@ async def run_cli_mode(args: argparse.Namespace) -> int:
     # Start adapter
     await adapter.start()
 
+    # Track current project state
+    current_project_dir: Optional[Path] = None
+    current_runner = None
+    current_idea: Optional[str] = None
+
     try:
-        # Get initial idea if starting new project
-        idea = None
-        if args.idea_file:
-            idea = args.idea_file.read_text()
-        elif not args.resume:
-            idea = await adapter.get_initial_idea()
-            if not idea:
-                print("No idea provided. Exiting.")
+        while True:
+            # Check for quit request
+            if keyboard_handler.quit_requested:
+                print("\nExiting...")
                 return 0
 
-        # Get project name
-        if idea and not args.resume:
-            suggested_name = idea.split()[0].lower()[:20] if idea else "project"
-            project_name = await adapter.get_project_name(suggested_name)
-            project_dir = project_dir.parent / project_name
+            # Clear any previous interrupt
+            keyboard_handler.clear_interrupt()
 
-        # Create project directory
-        project_dir.mkdir(parents=True, exist_ok=True)
-
-        # Create phase runner
-        runner = create_default_runner(project_dir)
-
-        # Create shutdown handler
-        shutdown_handler = create_shutdown_handler(runner._state_machine)
-
-        # Install signal handlers
-        try:
-            shutdown_handler.install_handlers()
-        except RuntimeError:
-            pass
-
-        # Create heartbeat manager
-        heartbeat = create_heartbeat_manager(runner._state_machine)
-
-        # Run with heartbeat
-        async with heartbeat:
-            # Define approval callback
-            async def approval_callback(summary: str, phase: str) -> bool:
-                if args.no_interactive:
-                    return True
-                return await adapter.get_approval(summary, phase)
-
-            # Run phases
-            success = await runner.run_until_complete(
-                project_dir=project_dir,
-                input_data={"idea": idea} if idea else None,
-                approval_callback=approval_callback,
-            )
-
-            if success:
-                await adapter.show_message("All phases completed successfully!", level="success")
+            # If we have a current project, show different prompt
+            if current_project_dir:
+                print(f"\n[Project: {current_project_dir.name}] Press Enter to continue, or type /new for new project")
+                user_input = await adapter._read_input("> ")
             else:
-                await adapter.show_message("Pipeline stopped or failed.", level="warning")
+                # No current project - ask for idea
+                if args.idea_file:
+                    user_input = args.idea_file.read_text()
+                elif not args.resume:
+                    user_input = await adapter.get_initial_idea()
+                else:
+                    user_input = ""
 
-        return 0 if success else 1
+            # Handle empty input
+            if not user_input or not user_input.strip():
+                if current_project_dir:
+                    # Continue current project
+                    user_input = ""  # Signal to continue
+                else:
+                    continue
+
+            # Handle slash commands
+            if user_input.startswith("/"):
+                cmd_parts = user_input[1:].split()
+                cmd = cmd_parts[0] if cmd_parts else ""
+                cmd_args = cmd_parts[1:] if len(cmd_parts) > 1 else []
+
+                try:
+                    result = await adapter.handle_command(cmd, cmd_args, {})
+                    if result == "__NEW_PROJECT__":
+                        # Reset current project and ask for new idea
+                        current_project_dir = None
+                        current_runner = None
+                        current_idea = None
+                        print("Starting new project...")
+                        continue
+                    elif result:
+                        print(result)
+                except SystemExit:
+                    print("\nExiting...")
+                    return 0
+                continue
+
+            # Determine if we're continuing or starting new
+            if current_project_dir and current_runner:
+                # Continue existing project
+                project_dir = current_project_dir
+                runner = current_runner
+                idea = current_idea
+            else:
+                # Start new project
+                idea = user_input
+                if not idea:
+                    print("No idea provided. Use /quit to exit or type what you want to build.")
+                    continue
+
+                # Get project name
+                suggested_name = idea.split()[0].lower()[:20] if idea else "project"
+                project_name = await adapter.get_project_name(suggested_name)
+                project_dir = workspace_dir / project_name
+
+                # Create project directory
+                project_dir.mkdir(parents=True, exist_ok=True)
+
+                # Create phase runner
+                runner = create_default_runner(project_dir)
+
+                # Store as current project
+                current_project_dir = project_dir
+                current_runner = runner
+                current_idea = idea
+
+            # Create shutdown handler
+            shutdown_handler = create_shutdown_handler(runner._state_machine)
+
+            # Create heartbeat manager
+            heartbeat = create_heartbeat_manager(runner._state_machine)
+
+            # Run with heartbeat
+            try:
+                async with heartbeat:
+                    # Define approval callback
+                    async def approval_callback(summary: str, phase: str) -> bool:
+                        if args.no_interactive:
+                            return True
+                        return await adapter.get_approval(summary, phase)
+
+                    # Run phases
+                    success = await runner.run_until_complete(
+                        project_dir=project_dir,
+                        input_data={"idea": idea} if idea else None,
+                        approval_callback=approval_callback,
+                    )
+
+                    if success:
+                        await adapter.show_message("All phases completed successfully!", level="success")
+                        # Clear current project on success
+                        current_project_dir = None
+                        current_runner = None
+                        current_idea = None
+                    else:
+                        await adapter.show_message(
+                            f"Project paused. Press Enter to continue or /new for new project.",
+                            level="warning"
+                        )
+                        # Keep current project for continuation
+
+            except KeyboardInterrupt:
+                # CTRL+C during execution - interrupt and return to prompt
+                print("\n[Interrupted - press Enter to continue, /new for new project, /quit to exit]")
+                keyboard_handler.clear_interrupt()
+                continue
+
+            # After completion or interruption, loop back to prompt
+            if args.idea_file or args.no_interactive:
+                # Non-interactive mode - exit after one run
+                return 0 if success else 1
 
     except KeyboardInterrupt:
-        print("\nInterrupted by user")
-        return 130
+        print("\n[Use /quit or /exit to close the application]")
+        return 0
+    except SystemExit:
+        return 0
     finally:
+        keyboard_handler.stop()
         await adapter.stop()
 
 
@@ -488,5 +576,7 @@ if __name__ == "__main__":
         exit_code = asyncio.run(main())
         sys.exit(exit_code)
     except KeyboardInterrupt:
-        print("\nInterrupted")
-        sys.exit(130)
+        print("\n[Use /quit or /exit to close the application]")
+        sys.exit(0)
+    except SystemExit as e:
+        sys.exit(e.code if e.code is not None else 0)

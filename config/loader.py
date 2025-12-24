@@ -59,6 +59,26 @@ def load_config_from_dict(config_dict: dict[str, Any]) -> OrchestratorConfig:
         if "linear_api_key" not in backend or backend["linear_api_key"] is None:
             backend["linear_api_key"] = os.environ.get("LINEAR_API_KEY")
 
+    # Handle agent-specific env vars
+    if "agent" not in config_dict:
+        config_dict["agent"] = {}
+    agent = config_dict["agent"]
+
+    # AGENT_MODEL env var
+    if "model" not in agent or agent["model"] is None:
+        env_model = os.environ.get("AGENT_MODEL")
+        if env_model:
+            agent["model"] = env_model
+
+    # MAX_SESSIONS env var
+    if "max_sessions" not in agent or agent["max_sessions"] is None:
+        env_max_sessions = os.environ.get("MAX_SESSIONS")
+        if env_max_sessions:
+            try:
+                agent["max_sessions"] = int(env_max_sessions)
+            except ValueError:
+                pass  # Ignore invalid values, use default
+
     return OrchestratorConfig.model_validate(config_dict)
 
 

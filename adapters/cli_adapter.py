@@ -65,6 +65,9 @@ class CLIAdapter(InputAdapter):
         "status": "Show project status [id]",
         "resume": "Resume a paused project <id>",
         "stop": "Stop current project gracefully",
+        "new": "Start a new project (abandons current)",
+        "quit": "Exit the application",
+        "exit": "Exit the application",
         "help": "Show this help message",
     }
 
@@ -85,7 +88,8 @@ class CLIAdapter(InputAdapter):
         """Start the CLI adapter."""
         self._running = True
         print(colorize(self.BANNER, Colors.CYAN, Colors.BOLD))
-        print("Type what you want to build, or use /help for commands.\n")
+        print("Type what you want to build, or use /help for commands.")
+        print(colorize("Press ESC or CTRL+C to interrupt running operations. Use /quit to exit.\n", Colors.DIM))
 
     async def stop(self) -> None:
         """Stop the CLI adapter."""
@@ -225,7 +229,7 @@ class CLIAdapter(InputAdapter):
             context: Context dict with orchestrator state.
 
         Returns:
-            Optional response message.
+            Optional response message, or raises SystemExit for quit.
         """
         if command == "help":
             return self._show_help()
@@ -237,6 +241,10 @@ class CLIAdapter(InputAdapter):
             return await self._handle_resume(args, context)
         elif command == "stop":
             return await self._handle_stop(context)
+        elif command == "new":
+            return "__NEW_PROJECT__"  # Special signal to start new project
+        elif command in ("quit", "exit"):
+            return await self._handle_quit()
         else:
             return f"Unknown command: /{command}. Type /help for available commands."
 
@@ -249,7 +257,13 @@ class CLIAdapter(InputAdapter):
         for cmd, desc in self.COMMANDS.items():
             lines.append(f"  /{cmd:10} - {desc}")
         lines.append("")
-        lines.append("Or just type what you want to build to start a new project.")
+        lines.append(colorize("Keyboard Shortcuts:", Colors.BOLD))
+        lines.append("  ESC         - Interrupt current operation and return to prompt")
+        lines.append("  CTRL+C      - Same as ESC (interrupt, not exit)")
+        lines.append("  Enter       - Continue current project (after interrupt)")
+        lines.append("")
+        lines.append("Type what you want to build to start a new project.")
+        lines.append("After interrupting, press Enter to continue or /new to start fresh.")
         return "\n".join(lines)
 
     async def _handle_projects(self, context: dict[str, Any]) -> str:
@@ -317,6 +331,13 @@ class CLIAdapter(InputAdapter):
             result = await self._on_command("stop", [])
             return result or "Stopping current project..."
         return "Stopping current project..."
+
+    async def _handle_quit(self) -> str:
+        """Handle /quit or /exit command."""
+        from orchestrator.keyboard_handler import get_keyboard_handler
+        handler = get_keyboard_handler()
+        handler.request_quit()
+        raise SystemExit(0)
 
     async def _read_input(self, prompt: str) -> str:
         """Read input from user asynchronously.

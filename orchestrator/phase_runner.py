@@ -10,6 +10,7 @@ from orchestrator.error_recovery import (
     RecoveryAction,
     create_recovery_manager_from_config,
 )
+from orchestrator.keyboard_handler import get_keyboard_handler, is_interrupt_requested, clear_interrupt
 from orchestrator.shutdown import GracefulShutdown
 from orchestrator.state_machine import PhaseStatus, PipelineStatus, StateMachine
 from orchestrator.swarm_controller import (
@@ -20,6 +21,11 @@ from orchestrator.swarm_controller import (
 )
 from phases.base import Phase, PhaseConfig, PhaseResult, PlanningPattern
 from phases.base import PhaseStatus as PhaseResultStatus
+
+
+class InterruptError(Exception):
+    """Raised when an interrupt is requested."""
+    pass
 
 
 class PhaseRunner:
@@ -106,6 +112,13 @@ class PhaseRunner:
 
         # Run phases in order
         while True:
+            # Check for keyboard interrupt (ESC or CTRL+C)
+            if is_interrupt_requested():
+                print("\n[INTERRUPT] Operation interrupted by user")
+                self._state_machine.set_status(PipelineStatus.PAUSED)
+                clear_interrupt()
+                return False
+
             # Check for shutdown
             if self._shutdown_handler and self._shutdown_handler.check_should_stop():
                 self._state_machine.set_status(PipelineStatus.STOPPING)
