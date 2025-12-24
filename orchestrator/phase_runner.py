@@ -178,7 +178,7 @@ class PhaseRunner:
                     # Pause for user intervention
                     self._state_machine.fail_phase(next_phase_name, error_msg)
                     self._state_machine.set_status(PipelineStatus.PAUSED)
-                    print(f"\n⚠️  Escalation required: {decision.hint or error_msg}")
+                    print(f"\n[WARNING] Escalation required: {decision.hint or error_msg}")
                     return False
 
                 # Check retry count
@@ -190,11 +190,11 @@ class PhaseRunner:
 
                 # Apply recovery action
                 if decision.action == RecoveryAction.RETRY_WITH_DELAY:
-                    print(f"⏳ Waiting {decision.retry_delay_seconds}s before retry...")
+                    print(f"[DELAY] Waiting {decision.retry_delay_seconds}s before retry...")
                     await asyncio.sleep(decision.retry_delay_seconds)
 
                 if decision.hint:
-                    print(f"💡 Recovery hint: {decision.hint}")
+                    print(f"[HINT] Recovery hint: {decision.hint}")
 
                 # Increment retry count and try again
                 self._state_machine.fail_phase(next_phase_name, error_msg)
@@ -288,14 +288,14 @@ class PhaseRunner:
         Returns:
             PhaseResult with aggregated output.
         """
-        print(f"\n🐝 Starting swarm execution for {phase.display_name}...")
+        print(f"\n[SWARM] Starting swarm execution for {phase.display_name}...")
 
         # Get swarm configs based on phase type
         swarm_configs = self._get_swarm_configs(phase.name, input_data)
 
         if not swarm_configs:
             # Fallback to single agent execution
-            print("⚠️  No swarm configs available, falling back to single agent")
+            print("[WARNING] No swarm configs available, falling back to single agent")
             return await phase.run(input_data, project_dir, context)
 
         print(f"   Running {len(swarm_configs)} agents in parallel...")

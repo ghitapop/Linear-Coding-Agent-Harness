@@ -1,5 +1,5 @@
-# Autonomous Orchestrator Framework - Docker Compose
-# ================================================
+# Coding Agent Harness - Docker Compose
+# ======================================
 #
 # Usage:
 #   # With bundled PostgreSQL (recommended for development)
@@ -14,7 +14,7 @@
 #   - LINEAR_API_KEY: Linear API key (optional, for Linear backend)
 #   - DATABASE_URL: PostgreSQL connection URL (required for external-db profile)
 #   - API_PORT: Port for API server (default: 8080)
-#   - WORKSPACE_PATH: Path to workspace directory (default: ./workspace)
+#   - WORKSPACE_PATH: Path to workspace directory (default: ./workspaces)
 
 version: "3.8"
 
@@ -23,12 +23,12 @@ services:
   # EXTERNAL DATABASE (Supabase, Neon, etc.)
   # Command: docker-compose --profile external-db up
   # ============================================
-  orchestrator:
+  coding-agent-harness:
     profiles: ["external-db"]
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: orchestrator
+    container_name: harness_app
     env_file: .env
     environment:
       # These can be overridden in .env
@@ -36,7 +36,7 @@ services:
     ports:
       - "${API_PORT:-8080}:8080"
     volumes:
-      - ${WORKSPACE_PATH:-./workspace}:/workspace
+      - ${WORKSPACE_PATH:-./workspaces}:/workspaces
       # Mount prompts for customization
       - ./prompts:/app/prompts:ro
     restart: unless-stopped
@@ -51,21 +51,21 @@ services:
   # BUNDLED POSTGRESQL
   # Command: docker-compose --profile with-db up
   # ============================================
-  orchestrator-with-db:
+  coding-agent-harness-with-db:
     profiles: ["with-db"]
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: orchestrator
+    container_name: harness_app
     env_file: .env
     environment:
       # Override DATABASE_URL to use Docker service name
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/orchestrator
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5433/coding_agent_harness_db
       PYTHONUNBUFFERED: "1"
     ports:
       - "${API_PORT:-8080}:8080"
     volumes:
-      - ${WORKSPACE_PATH:-./workspace}:/workspace
+      - ${WORKSPACE_PATH:-./workspaces}:/workspaces
       # Mount prompts for customization
       - ./prompts:/app/prompts:ro
     restart: unless-stopped
@@ -81,21 +81,22 @@ services:
 
   postgres:
     profiles: ["with-db"]
-    image: postgres:16-alpine
-    container_name: orchestrator-postgres
+    image: postgres:18-alpine
+    container_name: harness_db
     environment:
-      POSTGRES_DB: orchestrator
+      POSTGRES_DB: coding_agent_harness_db
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+      PGPORT: "5433"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # Initialize database schema on first run
       - ./database/migrations:/docker-entrypoint-initdb.d:ro
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-5433}:5433"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d orchestrator"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d coding_agent_harness_db -p 5433"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -106,10 +107,10 @@ services:
   # ============================================
   postgres-dev:
     profiles: ["dev-db"]
-    image: postgres:16-alpine
-    container_name: orchestrator-postgres-dev
+    image: postgres:18-alpine
+    container_name: harness_db_dev
     environment:
-      POSTGRES_DB: orchestrator
+      POSTGRES_DB: coding_agent_harness_db
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     volumes:
@@ -118,13 +119,13 @@ services:
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d orchestrator"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d coding_agent_harness_db"]
       interval: 5s
       timeout: 5s
       retries: 5
 
 volumes:
   postgres_data:
-    name: orchestrator-postgres-data
+    name: coding-agent-harness-data
   postgres_dev_data:
-    name: orchestrator-postgres-dev-data
+    name: coding-agent-harness-dev-data

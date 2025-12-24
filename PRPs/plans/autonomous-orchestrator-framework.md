@@ -199,31 +199,33 @@ services:
   # EXTERNAL DATABASE (Supabase, Neon, etc.)
   # Command: docker-compose --profile external-db up
   # ============================================
-  orchestrator:
+  coding-agent-harness:
     profiles: ["external-db"]
     build: .
+    container_name: harness_app
     env_file: .env  # DATABASE_URL from .env
     ports:
       - "${API_PORT:-8080}:8080"
     volumes:
-      - ${WORKSPACE_PATH:-./workspace}:/workspace
+      - ${WORKSPACE_PATH:-./workspaces}:/workspaces
     restart: unless-stopped
 
   # ============================================
   # BUNDLED POSTGRESQL
   # Command: docker-compose --profile with-db up
   # ============================================
-  orchestrator-with-db:
+  coding-agent-harness-with-db:
     profiles: ["with-db"]
     build: .
+    container_name: harness_app
     env_file: .env
     environment:
       # Override DATABASE_URL to use Docker service name
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/orchestrator
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5433/coding_agent_harness_db
     ports:
       - "${API_PORT:-8080}:8080"
     volumes:
-      - ${WORKSPACE_PATH:-./workspace}:/workspace
+      - ${WORKSPACE_PATH:-./workspaces}:/workspaces
     restart: unless-stopped
     depends_on:
       postgres:
@@ -231,34 +233,66 @@ services:
 
   postgres:
     profiles: ["with-db"]
-    image: postgres:16-alpine
+    image: postgres:18-alpine
+    container_name: harness_db
     environment:
-      POSTGRES_DB: orchestrator
+      POSTGRES_DB: coding_agent_harness_db
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+      PGPORT: "5433"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/migrations:/docker-entrypoint-initdb.d
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-5433}:5433"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -p 5433"]
       interval: 5s
       timeout: 5s
       retries: 5
 
+  # ============================================
+  # DEVELOPMENT DATABASE ONLY
+  # Command: docker-compose --profile dev-db up postgres-dev
+  # ============================================
+  postgres-dev:
+    profiles: ["dev-db"]
+    image: postgres:18-alpine
+    container_name: harness_db_dev
+    environment:
+      POSTGRES_DB: coding_agent_harness_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+
 volumes:
   postgres_data:
+    name: coding-agent-harness-data
+  postgres_dev_data:
+    name: coding-agent-harness-dev-data
 ```
+
+**Container Names:**
+| Container | Profile | Purpose |
+|-----------|---------|---------|
+| `harness_app` | with-db, external-db | Application container |
+| `harness_db` | with-db | Bundled PostgreSQL (port 5433) |
+| `harness_db_dev` | dev-db | Development PostgreSQL (port 5432) |
 
 **Usage:**
 ```bash
-# With bundled PostgreSQL
+# With bundled PostgreSQL (uses port 5433)
 docker-compose --profile with-db up
 
 # With external database (Supabase, Neon, etc.)
 # Set DATABASE_URL in .env first
 docker-compose --profile external-db up
+
+# Development database only (uses port 5432)
+docker-compose --profile dev-db up postgres-dev
 ```
 
 **.env Example:**
@@ -268,11 +302,11 @@ CLAUDE_CODE_OAUTH_TOKEN=your-token
 LINEAR_API_KEY=lin_api_xxx
 
 # For external-db profile
-DATABASE_URL=postgresql://user:pass@your-host:5432/orchestrator
+DATABASE_URL=postgresql://user:pass@your-host:5432/coding_agent_harness_db
 
 # Optional
 API_PORT=8080
-WORKSPACE_PATH=./workspace
+WORKSPACE_PATH=./workspaces
 ```
 
 ---
@@ -698,7 +732,7 @@ docker-compose up -d
 # Or connect to external database
 docker run -d \
   -p 8080:8080 \
-  -e DATABASE_URL=postgresql://user:pass@external-host:5432/orchestrator \
+  -e DATABASE_URL=postgresql://user:pass@external-host:5432/coding_agent_harness_db \
   -e CLAUDE_CODE_OAUTH_TOKEN=$TOKEN \
   orchestrator:latest
 ```

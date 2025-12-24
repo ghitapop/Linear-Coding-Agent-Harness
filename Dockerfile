@@ -41,13 +41,13 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Copy application code
 COPY . .
 
-# Create workspace directory for projects
-RUN mkdir -p /workspace
+# Create workspaces directory for projects
+RUN mkdir -p /workspaces
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    WORKSPACE_PATH=/workspace
+    WORKSPACE_PATH=/workspaces
 
 # Expose API port
 EXPOSE 8080

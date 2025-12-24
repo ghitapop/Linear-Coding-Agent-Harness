@@ -69,7 +69,7 @@ services:
     restart: unless-stopped
 
   db:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_DB: ${DB_NAME:-app}
       POSTGRES_USER: ${DB_USER:-postgres}

@@ -50,7 +50,7 @@ htmlcov/
 docs/_build/
 
 # Project specific
-workspace/
+workspaces/
 *.log
 .linear_project.json
 .orchestrator_state.json

@@ -1,15 +1,20 @@
-# Autonomous Coding Agent Demo (Linear-Integrated)
+# Autonomous Coding Agent Framework
 
-A minimal harness demonstrating long-running autonomous coding with the Claude Agent SDK. This demo implements a two-agent pattern (initializer + coding agent) with **Linear as the core project management system** for tracking all work.
+A framework for running autonomous coding agents with the Claude Agent SDK. This repository provides two systems:
+
+1. **Demo Mode** (`autonomous_agent_demo.py`): Simple two-agent pattern with Linear integration for issue tracking
+2. **Orchestrator Framework** (`main.py`): Full multi-phase pipeline with state persistence, swarm parallelism, and multiple backend options
 
 ## Key Features
 
-- **Linear Integration**: All work is tracked as Linear issues, not local files
-- **Real-time Visibility**: Watch agent progress directly in your Linear workspace
-- **Session Handoff**: Agents communicate via Linear comments, not text files
-- **Two-Agent Pattern**: Initializer creates Linear project & issues, coding agents implement them
+- **Multi-Phase Pipeline**: Ideation, architecture, task breakdown, implementation, testing, and deployment
+- **State Persistence**: Resumable pipelines with crash recovery
+- **Swarm Parallelism**: Run multiple agents in parallel for brainstorming phases
+- **Multiple Backends**: PostgreSQL, JSON file, or Linear for work item tracking
+- **Docker Support**: Ready-to-deploy containerized setup
+- **Linear Integration**: Real-time visibility in your Linear workspace (Demo Mode)
 - **Browser Testing**: Puppeteer MCP for UI verification
-- **Claude Opus 4.5**: Uses Claude's most capable model by default
+- **Defense-in-Depth Security**: Sandboxed execution with command allowlisting
 
 ## Prerequisites
 
@@ -25,9 +30,9 @@ pip install -r requirements.txt
 
 ### 2. Set Up Authentication
 
-You need two authentication tokens:
+You need authentication tokens based on your usage:
 
-**Claude Code OAuth Token:**
+**Claude Code OAuth Token (Required):**
 ```bash
 # Generate the token using Claude Code CLI
 claude setup-token
@@ -36,10 +41,15 @@ claude setup-token
 export CLAUDE_CODE_OAUTH_TOKEN='your-oauth-token-here'
 ```
 
-**Linear API Key:**
+**Linear API Key (Optional - for Demo Mode or Linear backend):**
 ```bash
 # Get your API key from: https://linear.app/YOUR-TEAM/settings/api
 export LINEAR_API_KEY='lin_api_xxxxxxxxxxxxx'
+```
+
+**Database URL (Optional - for Orchestrator with PostgreSQL backend):**
+```bash
+export DATABASE_URL='postgresql://user:pass@localhost:5432/coding_agent_harness_db'
 ```
 
 ### 3. Verify Installation
@@ -51,18 +61,87 @@ pip show claude-code-sdk  # Check SDK is installed
 
 ## Quick Start
 
+### Demo Mode (Linear-Integrated)
+
+Simple two-agent pattern for building applications with Linear issue tracking:
+
 ```bash
 python autonomous_agent_demo.py --project-dir ./my_project
-```
-
-For testing with limited iterations:
-```bash
 python autonomous_agent_demo.py --project-dir ./my_project --max-iterations 3
+python autonomous_agent_demo.py --project-dir ./my_project --model claude-sonnet-4-5-20250929
 ```
 
-## How It Works
+### Orchestrator Framework
 
-### Linear-Centric Workflow
+Full multi-phase pipeline with state management:
+
+```bash
+python main.py                                    # Interactive CLI (default)
+python main.py --config orchestrator.yaml         # Custom config file
+python main.py --resume                           # Resume paused project
+python main.py --status                           # Check project status
+python main.py --stop                             # Graceful shutdown
+python main.py --api --port 8080                  # API server mode
+python main.py --idea-file idea.md --no-interactive  # Non-interactive mode
+```
+
+### Docker
+
+```bash
+# With bundled PostgreSQL (recommended for development, uses port 5433)
+docker-compose --profile with-db up -d --build
+
+# With external database (Supabase, Neon, Railway, etc.)
+docker-compose --profile external-db up -d --build
+
+# Development database only
+docker-compose --profile dev-db up postgres-dev
+
+# Stop containers
+docker-compose --profile with-db down
+
+# Stop and delete PostgreSQL volume (required for major version upgrades)
+docker-compose --profile with-db down -v
+```
+
+**Container Names:**
+| Container | Profile | Purpose |
+|-----------|---------|---------|
+| `harness_app` | with-db, external-db | Application container |
+| `harness_db` | with-db | Bundled PostgreSQL (port 5433) |
+| `harness_db_dev` | dev-db | Development PostgreSQL (port 5432) |
+
+**Note:** Bundled PostgreSQL uses port 5433 (not default 5432) and stores data in the `coding-agent-harness-data` volume.
+
+### Database Migrations
+
+```bash
+alembic upgrade head                              # Apply all migrations
+alembic revision --autogenerate -m "description"  # Create new migration
+```
+
+### Tests
+
+```bash
+python test_security.py
+```
+
+## Environment Variables
+
+Copy `.env.example` to `.env` and configure:
+
+| Variable | Purpose | Required For                       |
+|----------|---------|------------------------------------|
+| `CLAUDE_CODE_OAUTH_TOKEN` | Claude Code auth (`claude setup-token`) | All modes                          |
+| `LINEAR_API_KEY` | Linear API access | Demo mode, Linear backend          |
+| `DATABASE_URL` | PostgreSQL connection string | Orchestrator with postgres backend |
+| `API_PORT` | Port for API server | Docker API mode (default: 8080)    |
+| `POSTGRES_PORT` | PostgreSQL port | Docker with-db profile (default: 5433) |
+| `WORKSPACE_PATH` | Workspace directory | Docker (default: ./workspaces)     |
+
+## Architecture
+
+### Demo Mode: Two-Agent Pattern
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -88,116 +167,194 @@ python autonomous_agent_demo.py --project-dir ./my_project --max-iterations 3
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Two-Agent Pattern
+1. **Initializer Agent (Session 1):** Reads `app_spec.txt`, creates Linear project with 50 issues, sets up project structure, writes `.linear_project.json`
+2. **Coding Agent (Sessions 2+):** Queries Linear for highest-priority Todo, claims it, implements with Puppeteer verification, marks Done, updates META issue
 
-1. **Initializer Agent (Session 1):**
-   - Reads `app_spec.txt`
-   - Lists teams and creates a new Linear project
-   - Creates 50 Linear issues with detailed test steps
-   - Creates a META issue for session tracking
-   - Sets up project structure, `init.sh`, and git
+### Orchestrator Framework: Multi-Phase Pipeline
 
-2. **Coding Agent (Sessions 2+):**
-   - Queries Linear for highest-priority Todo issue
-   - Runs verification tests on previously completed features
-   - Claims issue (status → In Progress)
-   - Implements the feature
-   - Tests via Puppeteer browser automation
-   - Adds implementation comment to issue
-   - Marks complete (status → Done)
-   - Updates META issue with session summary
+Phases execute sequentially with optional checkpoints:
 
-### Session Handoff via Linear
+```
+ideation → architecture → task_breakdown → initialize → implement → testing → deploy
+```
 
-Instead of local text files, agents communicate through:
-- **Issue Comments**: Implementation details, blockers, context
-- **META Issue**: Session summaries and handoff notes
-- **Issue Status**: Todo / In Progress / Done workflow
+**Execution Patterns:**
+- `SINGLE`: One agent per phase
+- `SWARM`: Multiple parallel agents with result aggregation (used by ideation, architecture)
 
-## Environment Variables
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `CLAUDE_CODE_OAUTH_TOKEN` | Claude Code OAuth token (from `claude setup-token`) | Yes |
-| `LINEAR_API_KEY` | Linear API key for MCP access | Yes |
-
-## Command Line Options
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--project-dir` | Directory for the project | `./autonomous_demo_project` |
-| `--max-iterations` | Max agent iterations | Unlimited |
-| `--model` | Claude model to use | `claude-opus-4-5-20251101` |
+**State Management:**
+- Pipeline state persisted to `.orchestrator_state.json`
+- Resumable after interruption via `--resume`
+- Checkpoint approvals pause for user confirmation
 
 ## Project Structure
 
 ```
 linear-agent-harness/
-├── autonomous_agent_demo.py  # Main entry point
+├── autonomous_agent_demo.py  # Demo mode entry point
+├── main.py                   # Orchestrator framework entry point
 ├── agent.py                  # Agent session logic
 ├── client.py                 # Claude SDK + MCP client configuration
 ├── security.py               # Bash command allowlist and validation
 ├── progress.py               # Progress tracking utilities
 ├── prompts.py                # Prompt loading utilities
 ├── linear_config.py          # Linear configuration constants
-├── prompts/
-│   ├── app_spec.txt          # Application specification
-│   ├── initializer_prompt.md # First session prompt (creates Linear issues)
-│   └── coding_prompt.md      # Continuation session prompt (works issues)
-└── requirements.txt          # Python dependencies
+├── orchestrator.yaml         # Default orchestrator configuration
+├── docker-compose.yml        # Docker deployment configuration
+├── Dockerfile                # Container image definition
+├── alembic.ini               # Database migration configuration
+│
+├── orchestrator/             # Pipeline orchestration
+│   ├── phase_runner.py       # Executes phases sequentially with retry
+│   ├── state_machine.py      # Persists pipeline state for resumability
+│   ├── swarm_controller.py   # Runs parallel agents with aggregation
+│   ├── aggregator.py         # Result aggregation logic
+│   ├── error_recovery.py     # Error handling and recovery
+│   ├── heartbeat.py          # Liveness monitoring
+│   ├── resume.py             # Resume logic for interrupted runs
+│   └── shutdown.py           # Graceful shutdown handling
+│
+├── phases/                   # Phase implementations
+│   ├── base.py               # Phase base class
+│   ├── ideation.py           # Brainstorming phase
+│   ├── architecture.py       # System design phase
+│   ├── task_breakdown.py     # Work item creation
+│   ├── initialize.py         # Project setup
+│   ├── implement.py          # Feature implementation
+│   ├── testing.py            # Test execution
+│   └── deploy.py             # Deployment phase
+│
+├── backends/                 # Work item tracking backends
+│   ├── base.py               # WorkTracker interface
+│   ├── postgres_backend.py   # PostgreSQL backend
+│   ├── json_backend.py       # Local file backend
+│   └── linear_backend.py     # Linear.app backend
+│
+├── adapters/                 # UI adapters
+│   ├── base.py               # Adapter interface
+│   ├── cli_adapter.py        # Interactive terminal UI
+│   └── api_adapter.py        # REST API callbacks
+│
+├── api/                      # FastAPI server
+│   ├── main.py               # App factory
+│   ├── schemas.py            # Pydantic models
+│   └── routes/
+│       ├── health.py         # Health check endpoint
+│       └── projects.py       # Project management endpoints
+│
+├── config/                   # Configuration
+│   ├── loader.py             # YAML config with env var substitution
+│   └── schema.py             # Config schema definitions
+│
+├── database/                 # Database layer
+│   ├── models.py             # SQLAlchemy ORM models
+│   ├── connection.py         # Connection management
+│   ├── repository.py         # Data access patterns
+│   └── migrations/           # Alembic migrations
+│
+└── prompts/                  # Agent prompts
+    ├── app_spec.txt          # Application specification
+    ├── initializer_prompt.md # First session prompt
+    └── coding_prompt.md      # Continuation session prompt
 ```
 
-## Generated Project Structure
+## Configuration
 
-After running, your project directory will contain:
+The orchestrator is configured via `orchestrator.yaml`:
 
+```yaml
+project:
+  name: "My Project"
+  directory: "./my_project"
+
+backend:
+  type: "postgres"  # Options: postgres | json | linear
+
+autonomy: "checkpoint"  # Options: full | checkpoint
+
+phases:
+  ideation:
+    enabled: true
+    pattern: "swarm"        # swarm | single
+    checkpoint_pause: true  # Pause for approval
+    max_retries: 3
+    timeout_minutes: 60
+
+  architecture:
+    enabled: true
+    pattern: "swarm"
+    checkpoint_pause: true
+
+  task_breakdown:
+    enabled: true
+    pattern: "single"
+    checkpoint_pause: true
+
+  initialize:
+    enabled: true
+    pattern: "single"
+    checkpoint_pause: false
+
+  implement:
+    enabled: true
+    pattern: "single"
+    checkpoint_pause: false
+    max_retries: 5
+    timeout_minutes: 240
+
+  testing:
+    enabled: false  # Optional
+    pattern: "single"
+
+  deploy:
+    enabled: false  # Optional
+    pattern: "single"
+
+agent:
+  model: "claude-opus-4-5-20251101"
+  max_sessions: 1000
+  session_timeout_minutes: 120
+
+error_recovery:
+  max_consecutive_errors: 3
+  stall_timeout_minutes: 30
+  retry_delay_seconds: 5
 ```
-my_project/
-├── .linear_project.json      # Linear project state (marker file)
-├── app_spec.txt              # Copied specification
-├── init.sh                   # Environment setup script
-├── .claude_settings.json     # Security settings
-└── [application files]       # Generated application code
-```
-
-## MCP Servers Used
-
-| Server | Transport | Purpose |
-|--------|-----------|---------|
-| **Linear** | HTTP (Streamable HTTP) | Project management - issues, status, comments |
-| **Puppeteer** | stdio | Browser automation for UI testing |
 
 ## Security Model
 
-This demo uses defense-in-depth security (see `security.py` and `client.py`):
+This framework uses defense-in-depth security (see `security.py` and `client.py`):
 
 1. **OS-level Sandbox:** Bash commands run in an isolated environment
 2. **Filesystem Restrictions:** File operations restricted to project directory
 3. **Bash Allowlist:** Only specific commands permitted (npm, node, git, etc.)
-4. **MCP Permissions:** Tools explicitly allowed in security settings
+4. **Extra Validation:** Commands like `pkill`, `chmod`, `init.sh` have custom validators
+5. **MCP Permissions:** Tools explicitly allowed in security settings
 
-## Linear Setup
+## MCP Servers
 
-Before running, ensure you have:
+| Server | Transport | Purpose |
+|--------|-----------|---------|
+| **Linear** | HTTP (`mcp.linear.app`) | Issue CRUD, project management |
+| **Puppeteer** | stdio | Browser automation for UI testing |
 
-1. A Linear workspace with at least one team
-2. An API key with read/write permissions (from Settings > API)
-3. The agent will automatically detect your team and create a project
+## Extending the System
 
-The initializer agent will create:
-- A new Linear project named after your app
-- 50 feature issues based on `app_spec.txt`
-- 1 META issue for session tracking and handoff
+**Add bash commands:** Add to `ALLOWED_COMMANDS` in `security.py`. Commands in `COMMANDS_NEEDING_EXTRA_VALIDATION` require custom validators.
 
-All subsequent coding agents will work from this Linear project.
+**Add new phase:** Extend `Phase` base class in `phases/base.py`, implement `run()`, register in phase runner.
+
+**Add backend:** Implement `WorkTracker` interface in `backends/base.py`.
+
+**Custom prompts:** Edit templates in `prompts/` directory.
 
 ## Customization
 
-### Changing the Application
+### Changing the Application (Demo Mode)
 
 Edit `prompts/app_spec.txt` to specify a different application to build.
 
-### Adjusting Issue Count
+### Adjusting Issue Count (Demo Mode)
 
 Edit `prompts/initializer_prompt.md` and change "50 issues" to your desired count.
 
@@ -213,6 +370,9 @@ Run `claude setup-token` to generate a token, then export it.
 **"LINEAR_API_KEY not set"**
 Get your API key from `https://linear.app/YOUR-TEAM/settings/api`
 
+**"DATABASE_URL not set" (Orchestrator)**
+Set your PostgreSQL connection string or use the `json` backend instead.
+
 **"Appears to hang on first run"**
 Normal behavior. The initializer is creating a Linear project and 50 issues with detailed descriptions. Watch for `[Tool: mcp__linear__create_issue]` output.
 
@@ -222,14 +382,26 @@ The agent tried to run a disallowed command. Add it to `ALLOWED_COMMANDS` in `se
 **"MCP server connection failed"**
 Verify your `LINEAR_API_KEY` is valid and has appropriate permissions. The Linear MCP server uses HTTP transport at `https://mcp.linear.app/mcp`.
 
-## Viewing Progress
+## Generated Project Files
 
-Open your Linear workspace to see:
-- The project created by the initializer agent
-- All 50 issues organized under the project
-- Real-time status changes (Todo → In Progress → Done)
-- Implementation comments on each issue
-- Session summaries on the META issue
+After running, your project directory will contain:
+
+**Demo Mode:**
+```
+my_project/
+├── .linear_project.json      # Linear project state (marker file)
+├── app_spec.txt              # Copied specification
+├── init.sh                   # Environment setup script
+├── .claude_settings.json     # Security settings
+└── [application files]       # Generated application code
+```
+
+**Orchestrator Framework:**
+```
+my_project/
+├── .orchestrator_state.json  # Pipeline state for resumability
+└── [application files]       # Generated application code
+```
 
 ## License
 
