@@ -1,0 +1,70 @@
+# Autonomous Orchestrator Configuration
+# =====================================
+# Default configuration for the orchestrator framework
+
+project:
+  name: "My Project"
+  directory: "./my_project"
+
+backend:
+  type: "postgres"  # Options: "postgres", "json", "linear"
+  # database_url: ${DATABASE_URL}  # Uses env var
+  # linear_api_key: ${LINEAR_API_KEY}  # Uses env var
+
+autonomy: "checkpoint"  # Options: "full", "checkpoint"
+
+phases:
+  ideation:
+    enabled: true
+    pattern: "swarm"  # 3 parallel agents
+    checkpoint_pause: true
+    max_retries: 3
+    timeout_minutes: 60
+
+  architecture:
+    enabled: true
+    pattern: "swarm"
+    checkpoint_pause: true
+    max_retries: 3
+    timeout_minutes: 60
+
+  task_breakdown:
+    enabled: true
+    pattern: "single"
+    checkpoint_pause: true
+    max_retries: 3
+    timeout_minutes: 60
+
+  initialize:
+    enabled: true
+    pattern: "single"
+    checkpoint_pause: false
+    max_retries: 3
+    timeout_minutes: 120
+
+  implement:
+    enabled: true
+    pattern: "single"
+    checkpoint_pause: false
+    max_retries: 5
+    timeout_minutes: 240
+
+  testing:
+    enabled: false  # Optional phase
+    pattern: "single"
+    checkpoint_pause: true
+
+  deploy:
+    enabled: false  # Optional phase
+    pattern: "single"
+    checkpoint_pause: true
+
+agent:
+  model: "claude-opus-4-5-20251101"
+  max_sessions: 1000
+  session_timeout_minutes: 120
+
+error_recovery:
+  max_consecutive_errors: 3
+  stall_timeout_minutes: 30
+  retry_delay_seconds: 5

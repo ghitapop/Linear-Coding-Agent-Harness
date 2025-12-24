@@ -8,6 +8,7 @@ Uses an allowlist approach - only explicitly permitted commands can run.
 
 import os
 import shlex
+from typing import Any
 
 
 # Allowed commands for development tasks
@@ -294,7 +295,11 @@ def get_command_for_validation(cmd: str, segments: list[str]) -> str:
     return ""
 
 
-async def bash_security_hook(input_data, tool_use_id=None, context=None):
+async def bash_security_hook(
+    input_data: dict[str, Any],
+    tool_use_id: str | None = None,
+    context: Any = None,
+) -> dict[str, str]:
     """
     Pre-tool-use hook that validates bash commands using an allowlist.
 

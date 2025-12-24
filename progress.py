@@ -8,11 +8,12 @@ Progress is tracked via Linear issues, with local state cached in .linear_projec
 
 import json
 from pathlib import Path
+from typing import Any, cast
 
 from linear_config import LINEAR_PROJECT_MARKER
 
 
-def load_linear_project_state(project_dir: Path) -> dict | None:
+def load_linear_project_state(project_dir: Path) -> dict[str, Any] | None:
     """
     Load the Linear project state from the marker file.
 
@@ -29,7 +30,7 @@ def load_linear_project_state(project_dir: Path) -> dict | None:
 
     try:
         with open(marker_file, "r") as f:
-            return json.load(f)
+            return cast(dict[str, Any], json.load(f))
     except (json.JSONDecodeError, IOError):
         return None
 
