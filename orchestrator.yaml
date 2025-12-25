@@ -4,7 +4,7 @@
 
 project:
   name: "My Project"
-  directory: "./my_project"
+  directory: "./workspaces"
 
 backend:
   type: "postgres"  # Options: "postgres", "json", "linear"
@@ -63,6 +63,24 @@ agent:
   model: "claude-opus-4-5-20251101"
   max_sessions: 1000
   session_timeout_minutes: 120
+
+# MCP servers for swarm agents (ideation, architecture phases)
+# Only HTTP/SSE servers are supported - stdio servers cause timeout errors
+# with concurrent agents. Leave empty if no MCP servers needed.
+swarm:
+  max_concurrent: 3
+  stagger_delay_seconds: 0.5
+  # Example HTTP MCP servers (uncomment to enable):
+  # mcp_servers:
+  #   archon:
+  #     type: "http"
+  #     url: "http://localhost:8000/mcp"
+  #   docs:
+  #     type: "sse"
+  #     url: "http://localhost:9000/sse"
+  # mcp_tools:
+  #   - "mcp__archon__search_docs"
+  #   - "mcp__archon__get_context"
 
 error_recovery:
   max_consecutive_errors: 3

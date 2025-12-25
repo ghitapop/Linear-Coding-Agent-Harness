@@ -45,7 +45,7 @@ services:
     volumes:
       - ${WORKSPACE_PATH:-./workspaces}:/workspaces
       # Mount prompts for customization
-      - ./prompts:/app/prompts:ro
+      - ./python/data/prompts:/app/python/data/prompts:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:${API_PORT:-8080}/health"]
@@ -75,7 +75,7 @@ services:
     volumes:
       - ${WORKSPACE_PATH:-./workspaces}:/workspaces
       # Mount prompts for customization
-      - ./prompts:/app/prompts:ro
+      - ./python/data/prompts:/app/python/data/prompts:ro
     restart: unless-stopped
     depends_on:
       postgres:
@@ -98,8 +98,7 @@ services:
       PGPORT: "${POSTGRES_PORT:-5433}"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      # Initialize database schema on first run
-      - ./database/migrations:/docker-entrypoint-initdb.d:ro
+      # Note: Run 'alembic upgrade head' after container starts for schema setup
     ports:
       - "${POSTGRES_PORT:-5433}:${POSTGRES_PORT:-5433}"
     restart: unless-stopped
@@ -123,7 +122,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     volumes:
       - postgres_dev_data:/var/lib/postgresql/data
-      - ./database/migrations:/docker-entrypoint-initdb.d:ro
+      # Note: Run 'alembic upgrade head' after container starts for schema setup
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:

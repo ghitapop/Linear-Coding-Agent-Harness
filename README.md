@@ -66,9 +66,9 @@ pip show claude-code-sdk  # Check SDK is installed
 Simple two-agent pattern for building applications with Linear issue tracking:
 
 ```bash
-python autonomous_agent_demo.py --project-dir ./my_project
-python autonomous_agent_demo.py --project-dir ./my_project --max-iterations 3
-python autonomous_agent_demo.py --project-dir ./my_project --model claude-sonnet-4-5-20250929
+python autonomous_agent_demo.py --project-dir ./workspaces
+python autonomous_agent_demo.py --project-dir ./workspaces --max-iterations 3
+python autonomous_agent_demo.py --project-dir ./workspaces --model claude-sonnet-4-5-20250929
 ```
 
 ### Orchestrator Framework
@@ -296,7 +296,7 @@ The orchestrator is configured via `orchestrator.yaml`:
 ```yaml
 project:
   name: "My Project"
-  directory: "./my_project"
+  directory: "./workspaces"
 
 backend:
   type: "postgres"  # Options: postgres | json | linear
@@ -431,7 +431,7 @@ After running, your project directory will contain:
 
 **Demo Mode:**
 ```
-my_project/
+workspaces/
 ├── .linear_project.json      # Linear project state (marker file)
 ├── app_spec.txt              # Copied specification
 ├── init.sh                   # Environment setup script
@@ -441,7 +441,7 @@ my_project/
 
 **Orchestrator Framework:**
 ```
-my_project/
+workspaces/
 ├── .orchestrator_state.json  # Pipeline state for resumability
 ├── PRPs/
 │   └── plans/

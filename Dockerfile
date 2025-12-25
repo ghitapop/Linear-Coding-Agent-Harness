@@ -58,4 +58,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:${API_PORT:-8080}/health || exit 1
 
 # Default command - API server mode (reads API_PORT from environment)
-CMD ["sh", "-c", "python main.py --api --host 0.0.0.0 --port ${API_PORT:-8080}"]
+CMD ["sh", "-c", "python run_harness.py --api --host 0.0.0.0 --port ${API_PORT:-8080}"]
