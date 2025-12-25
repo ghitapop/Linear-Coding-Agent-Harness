@@ -113,9 +113,11 @@ class TaskBreakdownPhase(Phase):
 
                 print()
 
-            # Save task breakdown to file
-            tasks_file = project_dir / "tasks.md"
-            tasks_file.write_text(response_text)
+            # Save task breakdown to file in PRPs/plans/ subdirectory
+            plans_dir = project_dir / "PRPs" / "plans"
+            plans_dir.mkdir(parents=True, exist_ok=True)
+            tasks_file = plans_dir / "tasks.md"
+            tasks_file.write_text(response_text, encoding="utf-8")
 
             # Try to parse task count from response
             task_count = self._count_tasks(response_text)
@@ -157,10 +159,10 @@ class TaskBreakdownPhase(Phase):
         if isinstance(input_data, str) and len(input_data) > 100:
             return input_data
 
-        # Try to read from file
-        architecture_file = project_dir / "architecture.md"
+        # Try to read from file in PRPs/plans/ subdirectory
+        architecture_file = project_dir / "PRPs" / "plans" / "architecture.md"
         if architecture_file.exists():
-            return architecture_file.read_text()
+            return architecture_file.read_text(encoding="utf-8")
 
         return None
 
@@ -177,9 +179,10 @@ class TaskBreakdownPhase(Phase):
         if isinstance(input_data, dict) and "requirements" in input_data:
             return input_data["requirements"]
 
-        requirements_file = project_dir / "requirements.md"
+        # Try to read from file in PRPs/plans/ subdirectory
+        requirements_file = project_dir / "PRPs" / "plans" / "requirements.md"
         if requirements_file.exists():
-            return requirements_file.read_text()
+            return requirements_file.read_text(encoding="utf-8")
 
         return None
 

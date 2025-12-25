@@ -55,9 +55,9 @@ class CLIAdapter(InputAdapter):
     """
 
     BANNER = """
-╔═══════════════════════════════════════════════════════════════╗
-║           Autonomous Orchestrator Framework v1.0               ║
-╚═══════════════════════════════════════════════════════════════╝
++---------------------------------------------------------------+
+|           Autonomous Orchestrator Framework v1.0               |
++---------------------------------------------------------------+
 """
 
     COMMANDS = {
@@ -294,35 +294,73 @@ class CLIAdapter(InputAdapter):
         project_id = args[0] if args else context.get("current_project_id")
 
         if not project_id:
-            return "Usage: /status <project_id>"
+            # If no current project and no arg, show list of projects
+            projects = context.get("projects", [])
+            if not projects:
+                return "No projects found. Type what you want to build to start a new project."
+
+            lines = ["Usage: /status <project_id>", "", "Available projects:"]
+            for p in projects:
+                lines.append(f"  {p['name']}: {p['status']} (phase: {p.get('phase', '-')})")
+            return "\n".join(lines)
 
         project = context.get("projects_by_id", {}).get(project_id)
         if not project:
             return f"Project not found: {project_id}"
 
+        # Handle status string that might not be a valid PipelineStatus
+        status_str = project.get('status', 'unknown')
+        try:
+            status_formatted = self._format_status(PipelineStatus(status_str))
+        except ValueError:
+            status_formatted = status_str
+
         lines = [
             colorize(f"Project: {project['name']}", Colors.BOLD),
             f"  ID: {project['id']}",
-            f"  Status: {self._format_status(PipelineStatus(project['status']))}",
+            f"  Directory: {project.get('dir', '-')}",
+            f"  Status: {status_formatted}",
             f"  Phase: {project.get('phase', '-')}",
             f"  Progress: {project.get('progress', '0/0')}",
             f"  Last Activity: {project.get('last_activity', 'Unknown')}",
         ]
+
+        # Show phase details if available
+        phases = project.get('phases', {})
+        if phases:
+            lines.append("")
+            lines.append(colorize("  Phases:", Colors.BOLD))
+            for name, phase_data in phases.items():
+                phase_status = phase_data.get('status', 'pending')
+                icon = self._get_status_icon(PhaseStatus(phase_status)) if phase_status in ['pending', 'running', 'completed', 'failed', 'skipped'] else "[?]"
+                lines.append(f"    {icon} {name}: {phase_status}")
 
         return "\n".join(lines)
 
     async def _handle_resume(self, args: list[str], context: dict[str, Any]) -> str:
         """Handle /resume command."""
         if not args:
-            return "Usage: /resume <project_id>"
+            # If no arg, show available projects
+            projects = context.get("projects", [])
+            paused_projects = [p for p in projects if p.get("status") in ["paused", "stopping", "running"]]
+
+            if not paused_projects:
+                return "No resumable projects found. Use /projects to list all projects."
+
+            lines = ["Usage: /resume <project_id>", "", "Resumable projects:"]
+            for p in paused_projects:
+                lines.append(f"  {p['name']}: {p['status']} (phase: {p.get('phase', '-')})")
+            return "\n".join(lines)
 
         project_id = args[0]
 
-        # Delegate to orchestrator via callback
-        if self._on_command:
-            result = await self._on_command("resume", [project_id])
-            return result or f"Resuming project {project_id}..."
-        return f"Resuming project {project_id}..."
+        # Check if project exists
+        project = context.get("projects_by_id", {}).get(project_id)
+        if not project:
+            return f"Project not found: {project_id}"
+
+        # Return special signal to resume
+        return f"__RESUME__{project_id}"
 
     async def _handle_stop(self, context: dict[str, Any]) -> str:
         """Handle /stop command."""
@@ -348,9 +386,18 @@ class CLIAdapter(InputAdapter):
         Returns:
             The user's input.
         """
-        # For Windows compatibility, use synchronous input in thread
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, lambda: input(prompt))
+        from orchestrator.keyboard_handler import pause_keyboard, resume_keyboard
+
+        # Pause keyboard handler so it doesn't consume input
+        pause_keyboard()
+
+        try:
+            # For Windows compatibility, use synchronous input in thread
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, lambda: input(prompt))
+        finally:
+            # Resume keyboard handler for agent operations
+            resume_keyboard()
 
     def _format_status(self, status: PipelineStatus) -> str:
         """Format pipeline status with color."""
@@ -369,13 +416,13 @@ class CLIAdapter(InputAdapter):
     def _get_status_icon(self, status: PhaseStatus) -> str:
         """Get status icon for phase."""
         icons = {
-            PhaseStatus.PENDING: "○",
-            PhaseStatus.RUNNING: colorize("●", Colors.BLUE),
-            PhaseStatus.COMPLETED: colorize("✓", Colors.GREEN),
-            PhaseStatus.FAILED: colorize("✗", Colors.RED),
-            PhaseStatus.SKIPPED: colorize("-", Colors.DIM),
+            PhaseStatus.PENDING: "[ ]",
+            PhaseStatus.RUNNING: colorize("[*]", Colors.BLUE),
+            PhaseStatus.COMPLETED: colorize("[+]", Colors.GREEN),
+            PhaseStatus.FAILED: colorize("[x]", Colors.RED),
+            PhaseStatus.SKIPPED: colorize("[-]", Colors.DIM),
         }
-        return icons.get(status, "?")
+        return icons.get(status, "[?]")
 
 
 def create_cli_adapter() -> CLIAdapter:

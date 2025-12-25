@@ -65,36 +65,29 @@ BUILTIN_TOOLS = [
 ]
 
 
-def create_client(project_dir: Path, model: str) -> ClaudeSDKClient:
+def setup_project_settings(project_dir: Path, verbose: bool = True) -> Path:
     """
-    Create a Claude Agent SDK client with multi-layered security.
+    Set up project security settings file. Called ONCE by orchestrator before spawning agents.
 
     Args:
         project_dir: Directory for the project
-        model: Claude model to use
+        verbose: If True, print setup messages
 
     Returns:
-        Configured ClaudeSDKClient
+        Path to the settings file
 
-    Security layers (defense in depth):
-    1. Sandbox - OS-level bash command isolation prevents filesystem escape
-    2. Permissions - File operations restricted to project_dir only
-    3. Security hooks - Bash commands validated against an allowlist
-       (see security.py for ALLOWED_COMMANDS)
+    This function is idempotent - it will only create the settings file if it doesn't exist.
     """
-    api_key = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
-    if not api_key:
-        raise ValueError(
-            "CLAUDE_CODE_OAUTH_TOKEN environment variable not set.\n"
-            "Run 'claude setup-token after installing the Claude Code CLI."
-        )
+    # Ensure project directory exists
+    project_dir.mkdir(parents=True, exist_ok=True)
 
-    linear_api_key = os.environ.get("LINEAR_API_KEY")
-    if not linear_api_key:
-        raise ValueError(
-            "LINEAR_API_KEY environment variable not set.\n"
-            "Get your API key from: https://linear.app/YOUR-TEAM/settings/api"
-        )
+    settings_file = project_dir / ".claude_settings.json"
+
+    # Only create if it doesn't exist (idempotent)
+    if settings_file.exists():
+        if verbose:
+            print(f"Using existing security settings at {settings_file}")
+        return settings_file
 
     # Create comprehensive security settings
     # Note: Using relative paths ("./**") restricts access to project directory
@@ -121,20 +114,60 @@ def create_client(project_dir: Path, model: str) -> ClaudeSDKClient:
         },
     }
 
-    # Ensure project directory exists before creating settings file
-    project_dir.mkdir(parents=True, exist_ok=True)
-
-    # Write settings to a file in the project directory
-    settings_file = project_dir / ".claude_settings.json"
+    # Write settings to file
     with open(settings_file, "w") as f:
         json.dump(security_settings, f, indent=2)
 
-    print(f"Created security settings at {settings_file}")
-    print("   - Sandbox enabled (OS-level bash isolation)")
-    print(f"   - Filesystem restricted to: {project_dir.resolve()}")
-    print("   - Bash commands restricted to allowlist (see security.py)")
-    print("   - MCP servers: puppeteer (browser automation), linear (project management)")
-    print()
+    if verbose:
+        print(f"Created security settings at {settings_file}")
+        print("   - Sandbox enabled (OS-level bash isolation)")
+        print(f"   - Filesystem restricted to: {project_dir.resolve()}")
+        print("   - Bash commands restricted to allowlist (see security.py)")
+        print("   - MCP servers: puppeteer (browser automation), linear (project management)")
+        print()
+
+    return settings_file
+
+
+def create_client(project_dir: Path, model: str, verbose: bool = True) -> ClaudeSDKClient:
+    """
+    Create a Claude Agent SDK client using existing project settings.
+
+    Args:
+        project_dir: Directory for the project (must have .claude_settings.json)
+        model: Claude model to use
+        verbose: If True, print status messages
+
+    Returns:
+        Configured ClaudeSDKClient
+
+    Note: Call setup_project_settings() first to create the settings file.
+    If settings don't exist, they will be created automatically for backwards compatibility.
+
+    Security layers (defense in depth):
+    1. Sandbox - OS-level bash command isolation prevents filesystem escape
+    2. Permissions - File operations restricted to project_dir only
+    3. Security hooks - Bash commands validated against an allowlist
+       (see security.py for ALLOWED_COMMANDS)
+    """
+    api_key = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
+    if not api_key:
+        raise ValueError(
+            "CLAUDE_CODE_OAUTH_TOKEN environment variable not set.\n"
+            "Run 'claude setup-token after installing the Claude Code CLI."
+        )
+
+    linear_api_key = os.environ.get("LINEAR_API_KEY")
+    if not linear_api_key:
+        raise ValueError(
+            "LINEAR_API_KEY environment variable not set.\n"
+            "Get your API key from: https://linear.app/YOUR-TEAM/settings/api"
+        )
+
+    # Ensure settings exist (backwards compatibility - orchestrator should call setup_project_settings first)
+    settings_file = project_dir / ".claude_settings.json"
+    if not settings_file.exists():
+        settings_file = setup_project_settings(project_dir, verbose=verbose)
 
     return ClaudeSDKClient(
         options=ClaudeCodeOptions(

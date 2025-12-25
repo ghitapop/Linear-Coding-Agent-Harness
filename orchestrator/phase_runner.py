@@ -14,6 +14,7 @@ from orchestrator.keyboard_handler import get_keyboard_handler, is_interrupt_req
 from orchestrator.shutdown import GracefulShutdown
 from orchestrator.state_machine import PhaseStatus, PipelineStatus, StateMachine
 from orchestrator.swarm_controller import (
+    AgentStatus,
     SwarmController,
     SwarmAgentConfig,
     create_architecture_swarm_configs,
@@ -301,7 +302,13 @@ class PhaseRunner:
         Returns:
             PhaseResult with aggregated output.
         """
+        from client import setup_project_settings
+
         print(f"\n[SWARM] Starting swarm execution for {phase.display_name}...")
+
+        # Orchestrator responsibility: set up project settings ONCE before spawning agents
+        # This prevents race conditions when multiple agents try to create settings simultaneously
+        setup_project_settings(project_dir, verbose=False)
 
         # Get swarm configs based on phase type
         swarm_configs = self._get_swarm_configs(phase.name, input_data)
@@ -326,6 +333,11 @@ class PhaseRunner:
 
         print(f"\n   Swarm completed: {swarm_result.success_count}/{len(swarm_configs)} succeeded")
 
+        # Always log individual agent failures (even when swarm succeeds overall)
+        for result in swarm_result.agent_results:
+            if result.status == AgentStatus.FAILED:
+                print(f"   [FAILED] Agent {result.agent_id} ({result.role}): {result.error}")
+
         # Check if enough agents succeeded
         if not swarm_result.any_succeeded:
             errors = [
@@ -347,7 +359,7 @@ class PhaseRunner:
 
         # Save aggregated output
         output_file = project_dir / f"{phase.name}_output.md"
-        output_file.write_text(aggregation_result.content)
+        output_file.write_text(aggregation_result.content, encoding="utf-8")
         print(f"   Output saved to {output_file}")
 
         return PhaseResult(

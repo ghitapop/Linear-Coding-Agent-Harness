@@ -50,10 +50,10 @@ Create a single, unified requirements document that:
 - Is well-organized and actionable
 - Can be used directly by the architecture phase
 
-Save as `requirements.md` in the project directory.
+Output the content directly - the system will save it to `PRPs/plans/requirements.md` automatically.
 
 ## Quality Checklist
-Before saving, verify:
+Before finalizing, verify:
 - [ ] All user personas defined
 - [ ] User stories cover main workflows
 - [ ] Functional requirements are specific and measurable

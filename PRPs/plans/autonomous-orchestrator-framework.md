@@ -1082,9 +1082,11 @@ docker-compose logs -f
 - [ ] Can resume any paused project
 
 ### Core Orchestration
-- [ ] Phases execute in order with persistence
-- [ ] Swarm pattern works for ideation/architecture
+- [x] Phases execute in order with persistence
+- [x] Swarm pattern works for ideation/architecture
 - [ ] Both JSON and Linear work item backends work
+- [x] Planning phases enabled by default (`include_planning_phases=True` in main.py)
+- [x] Phase outputs saved to `PRPs/plans/` subdirectory (requirements.md, architecture.md, tasks.md)
 
 ### Robustness & Resilience
 - [ ] CTRL+C triggers graceful shutdown (not crash)
@@ -1145,5 +1147,18 @@ class Phase(ABC):
 ---
 
 *Created: 2025-12-23*
-*Updated: 2025-12-24*
+*Updated: 2025-12-25*
 *Status: ALL SPRINTS COMPLETED (40+ source files, Docker ready)*
+
+---
+
+## Recent Fixes
+
+### Fix: Enable Full Pipeline (2025-12-25)
+- **Issue**: Planning phases (ideation, architecture, task_breakdown) were not running by default
+- **Root cause**: `create_default_runner()` called without `include_planning_phases=True`
+- **Fix**: Added `include_planning_phases=True` in `main.py:255`
+- **Additional changes**:
+  - Fixed idea extraction from dict in `phases/ideation.py`
+  - Updated all phase output paths to use `PRPs/plans/` subdirectory
+- See: `PRPs/plans/fix-enable-planning-phases.md` for details

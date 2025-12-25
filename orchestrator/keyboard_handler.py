@@ -33,6 +33,7 @@ class KeyboardHandler:
         self._quit_requested = asyncio.Event()
         self._listener_thread: Optional[threading.Thread] = None
         self._running = False
+        self._paused = False  # When paused, don't consume keyboard input
         self._callback: Optional[Callable[[], None]] = None
 
     @property
@@ -63,6 +64,14 @@ class KeyboardHandler:
     def set_interrupt_callback(self, callback: Callable[[], None]) -> None:
         """Set callback to be called when interrupt is requested."""
         self._callback = callback
+
+    def pause(self) -> None:
+        """Pause keyboard listening to allow normal input() to work."""
+        self._paused = True
+
+    def resume(self) -> None:
+        """Resume keyboard listening after user input is complete."""
+        self._paused = False
 
     def start(self) -> None:
         """Start listening for keyboard input."""
@@ -95,6 +104,11 @@ class KeyboardHandler:
         """Listen for keyboard input on Windows."""
         while self._running:
             try:
+                # When paused, don't consume keyboard input (let input() work)
+                if self._paused:
+                    threading.Event().wait(0.1)
+                    continue
+
                 if msvcrt.kbhit():
                     key = msvcrt.getch()
                     if key == b'\x1b':  # ESC
@@ -164,3 +178,15 @@ def request_interrupt() -> None:
     """Request an interrupt."""
     handler = get_keyboard_handler()
     handler.request_interrupt()
+
+
+def pause_keyboard() -> None:
+    """Pause keyboard listening to allow normal input() to work."""
+    handler = get_keyboard_handler()
+    handler.pause()
+
+
+def resume_keyboard() -> None:
+    """Resume keyboard listening after user input is complete."""
+    handler = get_keyboard_handler()
+    handler.resume()

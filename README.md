@@ -183,9 +183,22 @@ Phases execute sequentially with optional checkpoints:
 ideation → architecture → task_breakdown → initialize → implement → testing → deploy
 ```
 
+**Planning phases are enabled by default** when running `python main.py`. The user's idea flows through:
+1. **Ideation** → produces `PRPs/plans/requirements.md`
+2. **Architecture** → produces `PRPs/plans/architecture.md`
+3. **Task Breakdown** → produces `PRPs/plans/tasks.md`
+4. **Initialize/Implement** → executes the tasks
+
 **Execution Patterns:**
 - `SINGLE`: One agent per phase
 - `SWARM`: Multiple parallel agents with result aggregation (used by ideation, architecture)
+
+**Ideation Swarm:** Runs 3 specialized agents in parallel:
+- User requirements specialist (personas, user stories, journeys)
+- Technical feasibility specialist (stack, integrations, security)
+- Edge cases specialist (errors, failure modes, accessibility)
+
+Results are aggregated into a unified requirements document.
 
 **State Management:**
 - Pipeline state persisted to `.orchestrator_state.json`
@@ -257,10 +270,23 @@ linear-agent-harness/
 │   ├── repository.py         # Data access patterns
 │   └── migrations/           # Alembic migrations
 │
-└── prompts/                  # Agent prompts
-    ├── app_spec.txt          # Application specification
-    ├── initializer_prompt.md # First session prompt
-    └── coding_prompt.md      # Continuation session prompt
+├── prompts/                  # Agent prompts
+│   ├── app_spec.txt          # Application specification
+│   ├── initializer_prompt.md # First session prompt
+│   ├── coding_prompt.md      # Continuation session prompt
+│   ├── ideation/             # Ideation phase prompts
+│   │   ├── brainstorm.md     # Single-agent prompt (fallback)
+│   │   ├── brainstorm_user.md        # Swarm: user requirements
+│   │   ├── brainstorm_technical.md   # Swarm: technical feasibility
+│   │   ├── brainstorm_edge_cases.md  # Swarm: edge cases & risks
+│   │   └── aggregate.md      # Combines swarm outputs
+│   ├── architecture/         # Architecture phase prompts
+│   └── task_breakdown/       # Task breakdown phase prompts
+│
+└── PRPs/plans/               # Generated planning documents (per project)
+    ├── requirements.md       # Output from ideation phase
+    ├── architecture.md       # Output from architecture phase
+    └── tasks.md              # Output from task breakdown phase
 ```
 
 ## Configuration
@@ -417,6 +443,11 @@ my_project/
 ```
 my_project/
 ├── .orchestrator_state.json  # Pipeline state for resumability
+├── PRPs/
+│   └── plans/
+│       ├── requirements.md   # From ideation phase
+│       ├── architecture.md   # From architecture phase
+│       └── tasks.md          # From task breakdown phase
 └── [application files]       # Generated application code
 ```
 

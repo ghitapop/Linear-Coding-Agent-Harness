@@ -78,8 +78,14 @@ class IdeationPhase(Phase):
             # Fallback to inline prompt
             prompt_template = self._get_default_prompt()
 
+        # Extract idea text from input_data (handles dict from main.py)
+        if isinstance(input_data, dict):
+            idea_text = input_data.get("idea", str(input_data))
+        else:
+            idea_text = str(input_data)
+
         # Inject the idea into the prompt
-        prompt = prompt_template.replace("{{IDEA}}", str(input_data))
+        prompt = prompt_template.replace("{{IDEA}}", idea_text)
 
         # Check for error recovery context (retry with hint)
         if context and "recovery_hint" in context:
@@ -115,9 +121,11 @@ class IdeationPhase(Phase):
             if context and "error_recovery" in context:
                 context["error_recovery"].record_progress()
 
-            # Save requirements to file
-            requirements_file = project_dir / "requirements.md"
-            requirements_file.write_text(response_text)
+            # Save requirements to file in PRPs/plans/ subdirectory
+            plans_dir = project_dir / "PRPs" / "plans"
+            plans_dir.mkdir(parents=True, exist_ok=True)
+            requirements_file = plans_dir / "requirements.md"
+            requirements_file.write_text(response_text, encoding="utf-8")
 
             return PhaseResult(
                 status=PhaseStatus.NEEDS_APPROVAL if self.config.checkpoint_pause else PhaseStatus.SUCCESS,

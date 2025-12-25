@@ -226,11 +226,21 @@ class SwarmController:
         # Wait for all tasks to complete
         try:
             results = await asyncio.gather(*tasks, return_exceptions=False)
+        except asyncio.CancelledError:
+            # Handle cancellation gracefully
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            # Wait for cancelled tasks to finish cleanup
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
         except Exception as e:
             # Handle any unexpected errors
             for task in tasks:
                 if not task.done():
                     task.cancel()
+            # Wait for cancelled tasks to finish cleanup
+            await asyncio.gather(*tasks, return_exceptions=True)
             raise RuntimeError(f"Swarm execution failed: {e}") from e
         finally:
             # Clean up running agents tracking
@@ -267,9 +277,12 @@ class SwarmController:
         from client import create_client
 
         started_at = datetime.utcnow()
+        client = None
 
         try:
-            client = create_client(project_dir, config.model)
+            # Use existing settings (orchestrator calls setup_project_settings before swarm)
+            # verbose=False to avoid redundant messages from parallel agents
+            client = create_client(project_dir, config.model, verbose=False)
 
             async with client:
                 await client.query(config.prompt)
@@ -287,6 +300,17 @@ class SwarmController:
                 role=config.role,
                 status=AgentStatus.COMPLETED,
                 output=response_text,
+                started_at=started_at,
+                completed_at=datetime.utcnow(),
+            )
+
+        except asyncio.CancelledError:
+            # Handle cancellation - return cancelled status, don't re-raise
+            return SwarmAgentResult(
+                agent_id=config.agent_id,
+                role=config.role,
+                status=AgentStatus.CANCELLED,
+                error="Agent cancelled",
                 started_at=started_at,
                 completed_at=datetime.utcnow(),
             )

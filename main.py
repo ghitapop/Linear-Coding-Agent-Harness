@@ -26,15 +26,22 @@ Usage:
 
 import argparse
 import asyncio
+import atexit
+import gc
 import os
-import signal
 import sys
+import warnings
 from pathlib import Path
 from typing import Optional
-
 from dotenv import load_dotenv
+from orchestrator.keyboard_handler import get_keyboard_handler
+from orchestrator.project_registry import create_project_registry
 
-from orchestrator.keyboard_handler import get_keyboard_handler, request_interrupt
+# Suppress ResourceWarning about unclosed transports during shutdown
+# This happens when CTRL+C interrupts async subprocess operations on Windows
+warnings.filterwarnings("ignore", category=ResourceWarning, message=".*unclosed transport.*")
+warnings.filterwarnings("ignore", category=ResourceWarning, message=".*unclosed.*")
+warnings.filterwarnings("ignore", message=".*I/O operation on closed pipe.*")
 
 
 def parse_args() -> argparse.Namespace:
@@ -169,6 +176,9 @@ async def run_cli_mode(args: argparse.Namespace) -> int:
     workspace_dir = workspace_dir.resolve()
     workspace_dir.mkdir(parents=True, exist_ok=True)  # Ensure workspace exists
 
+    # Create project registry
+    project_registry = create_project_registry(workspace_dir)
+
     # Create CLI adapter
     adapter = create_cli_adapter()
 
@@ -218,14 +228,32 @@ async def run_cli_mode(args: argparse.Namespace) -> int:
                 cmd_args = cmd_parts[1:] if len(cmd_parts) > 1 else []
 
                 try:
-                    result = await adapter.handle_command(cmd, cmd_args, {})
+                    # Get context from project registry
+                    context = project_registry.get_context()
+                    result = await adapter.handle_command(cmd, cmd_args, context)
                     if result == "__NEW_PROJECT__":
                         # Reset current project and ask for new idea
                         current_project_dir = None
                         current_runner = None
                         current_idea = None
+                        project_registry.current_project_id = None
                         print("Starting new project...")
                         continue
+                    elif result and result.startswith("__RESUME__"):
+                        # Resume a project
+                        resume_project_id = result[10:]  # Remove "__RESUME__" prefix
+                        project_dir_path = project_registry.get_project_dir(resume_project_id)
+                        if project_dir_path:
+                            print(f"Resuming project: {resume_project_id}")
+                            current_project_dir = project_dir_path
+                            current_runner = create_default_runner(project_dir_path, include_planning_phases=True)
+                            current_idea = None  # Will be loaded from state if needed
+                            project_registry.current_project_id = resume_project_id
+                            # Continue to main loop which will run the project
+                            continue
+                        else:
+                            print(f"Could not find project directory for: {resume_project_id}")
+                            continue
                     elif result:
                         print(result)
                 except SystemExit:
@@ -254,13 +282,14 @@ async def run_cli_mode(args: argparse.Namespace) -> int:
                 # Create project directory
                 project_dir.mkdir(parents=True, exist_ok=True)
 
-                # Create phase runner
-                runner = create_default_runner(project_dir)
+                # Create phase runner with planning phases enabled
+                runner = create_default_runner(project_dir, include_planning_phases=True)
 
                 # Store as current project
                 current_project_dir = project_dir
                 current_runner = runner
                 current_idea = idea
+                project_registry.current_project_id = project_name
 
             # Create shutdown handler
             shutdown_handler = create_shutdown_handler(runner._state_machine)
@@ -290,6 +319,7 @@ async def run_cli_mode(args: argparse.Namespace) -> int:
                         current_project_dir = None
                         current_runner = None
                         current_idea = None
+                        project_registry.current_project_id = None
                     else:
                         await adapter.show_message(
                             f"Project paused. Press Enter to continue or /new for new project.",
@@ -298,8 +328,14 @@ async def run_cli_mode(args: argparse.Namespace) -> int:
                         # Keep current project for continuation
 
             except KeyboardInterrupt:
-                # CTRL+C during execution - interrupt and return to prompt
-                print("\n[Interrupted - press Enter to continue, /new for new project, /quit to exit]")
+                # CTRL+C during execution - cancel running tasks and return to prompt
+                print("\n[Interrupted - cancelling running agents...]")
+                # Cancel any running swarm agents
+                if runner and hasattr(runner, '_swarm_controller'):
+                    await runner._swarm_controller.cancel_all()
+                # Give a moment for cleanup
+                await asyncio.sleep(0.1)
+                print("[Interrupted - press Enter to continue, /new for new project, /quit to exit]")
                 keyboard_handler.clear_interrupt()
                 continue
 
@@ -571,12 +607,43 @@ async def main() -> int:
         return await run_cli_mode(args)
 
 
+def _suppress_asyncio_cleanup_errors() -> None:
+    """Suppress asyncio cleanup errors during shutdown.
+
+    On Windows, when CTRL+C interrupts subprocess operations, asyncio's
+    ProactorEventLoop may produce "I/O operation on closed pipe" errors
+    during garbage collection. These are harmless but noisy.
+    """
+    import io
+
+    # Force garbage collection to trigger __del__ methods while we can suppress output
+    original_stderr = sys.stderr
+    try:
+        sys.stderr = io.StringIO()  # Temporarily redirect stderr
+        gc.collect()  # Force cleanup of asyncio transports
+        gc.collect()  # Run twice to catch weak references
+    finally:
+        sys.stderr = original_stderr
+
+
+def _cleanup_on_exit() -> None:
+    """Register cleanup to run on exit to suppress noisy errors."""
+    _suppress_asyncio_cleanup_errors()
+
+
+# Register cleanup handler to suppress asyncio errors on exit
+atexit.register(_cleanup_on_exit)
+
+
 if __name__ == "__main__":
     try:
         exit_code = asyncio.run(main())
+        _suppress_asyncio_cleanup_errors()
         sys.exit(exit_code)
     except KeyboardInterrupt:
         print("\n[Use /quit or /exit to close the application]")
+        _suppress_asyncio_cleanup_errors()
         sys.exit(0)
     except SystemExit as e:
+        _suppress_asyncio_cleanup_errors()
         sys.exit(e.code if e.code is not None else 0)

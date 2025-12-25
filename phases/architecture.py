@@ -116,9 +116,11 @@ class ArchitecturePhase(Phase):
             if context and "error_recovery" in context:
                 context["error_recovery"].record_progress()
 
-            # Save architecture to file
-            architecture_file = project_dir / "architecture.md"
-            architecture_file.write_text(response_text)
+            # Save architecture to file in PRPs/plans/ subdirectory
+            plans_dir = project_dir / "PRPs" / "plans"
+            plans_dir.mkdir(parents=True, exist_ok=True)
+            architecture_file = plans_dir / "architecture.md"
+            architecture_file.write_text(response_text, encoding="utf-8")
 
             return PhaseResult(
                 status=PhaseStatus.NEEDS_APPROVAL if self.config.checkpoint_pause else PhaseStatus.SUCCESS,
@@ -153,10 +155,10 @@ class ArchitecturePhase(Phase):
         if isinstance(input_data, str) and len(input_data) > 50:
             return input_data
 
-        # Try to read from file
-        requirements_file = project_dir / "requirements.md"
+        # Try to read from file in PRPs/plans/ subdirectory
+        requirements_file = project_dir / "PRPs" / "plans" / "requirements.md"
         if requirements_file.exists():
-            return requirements_file.read_text()
+            return requirements_file.read_text(encoding="utf-8")
 
         return None
 

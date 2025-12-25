@@ -40,7 +40,7 @@ Analyze the following idea and produce a comprehensive requirements document.
 - What metrics will define success?
 
 ## Output Format
-Write a structured requirements document in Markdown format. Save it as `requirements.md` in the project directory.
+Write a structured requirements document in Markdown format. Output the content directly - the system will save it to `PRPs/plans/requirements.md` automatically.
 
 The document MUST include these sections:
 
@@ -92,5 +92,14 @@ The document MUST include these sections:
 ### Out of Scope
 - [Features for future releases]
 ```
+
+## Output Constraints
+- **Target length:** 500-1500 lines
+- **Maximum:** 1500 lines (hard limit)
+- Be concise but comprehensive
+- Prioritize quality over quantity
+- Focus on the most critical requirements across all categories
+- Avoid redundancy and filler content
+- This document will be consumed by downstream agents, so clarity and brevity are essential
 
 Be thorough and specific. This document will drive all subsequent phases.
